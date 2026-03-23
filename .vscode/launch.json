@@ -1,0 +1,38 @@
+{
+	// Użyj funkcji IntelliSense, aby uzyskać informacje o możliwych atrybutach.
+	// Najedź kursorem, aby wyświetlić opisy istniejących atrybutów.
+	// Aby uzyskać więcej informacji, odwiedź stronę: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		
+		{
+			"name": "Debug executable 'factory_game'",
+			"type": "lldb",
+			"request": "launch",
+			"cargo": {
+                "args": [
+                    "build",
+                    "--bin=factory_game",
+                    "--package=factory_game"
+                ],
+                "filter": {
+                    "name": "factory_game",
+                    "kind": "bin"
+                }
+			},
+			"args": [],
+			"cwd": "${workspaceFolder}"
+		},
+		{
+			"name": "Debug unit tests in executable 'factory_game'",
+			"type": "lldb",
+			"request": "launch",
+			"cargo": {
+				"args": [
+					"test",
+					"--bin=factory_game"
+				]
+			}
+		}
+	]
+}
