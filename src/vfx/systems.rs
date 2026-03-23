@@ -1,9 +1,8 @@
 use bevy::prelude::*;
 use bevy::post_process::bloom::Bloom;
 
-use crate::{OrbitalCamera, CameraFocusedOn};
-use crate::structs::UniverseStar;
-use crate::CameraView;
+use crate::camera::components::{OrbitalCamera, CameraView, CameraFocusedOn};
+use crate::universe_gen::components::UniverseStar;
 
 pub fn dynamic_lens_exposure(
     mut query: Query<(&OrbitalCamera, &mut Bloom, &CameraView)>,

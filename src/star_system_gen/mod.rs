@@ -4,12 +4,12 @@ pub mod components;
 pub mod math;
 pub mod systems;
 
-pub struct UniverseGenPlugin;
+pub struct StarSystemPlugin;
 
-impl Plugin for UniverseGenPlugin {
+impl Plugin for StarSystemPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Startup, systems::generate_and_spawn_universe)
+            
         ;
     }
 }

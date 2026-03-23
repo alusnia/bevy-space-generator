@@ -1,12 +1,51 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 use bevy::post_process::bloom::Bloom;
 use bevy::camera::visibility::RenderLayers;
-use std::f32::consts::PI;
 use bevy::render::view::Hdr;
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use std::f32::consts::PI;
 
-use crate::{GameRng, GameState, OrbitalCamera};
-use crate::enums::CameraView;
+use crate::{GameRng, GameState};
+use crate::camera::components::{OrbitalCamera, CameraFocusedOn, CameraView};
+use crate::camera::math::{is_camera_active, interpolate_camera_movement, update_camera_transform};
+use crate::universe_gen::components::UniverseStar;
+use crate::star_system_gen::components::LocalStarSystem;
+
+pub fn orbital_camera_system(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut scroll_evr: MessageReader<MouseWheel>,
+    time: Res<Time>,
+    current_state: Res<State<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut query: Query<(&mut Transform, &mut OrbitalCamera, &CameraView)>, 
+) {
+    let delta = time.delta_secs();
+    let state = current_state.get();
+    let scroll_y_delta = get_scroll_delta(&mut scroll_evr);
+
+    for (mut transform, mut orbit, view) in &mut query {
+        
+        handle_rotation_input(&keyboard, &mut orbit, delta);
+
+        if is_camera_active(view, state) {
+            if scroll_y_delta != 0.0 {
+                
+                let zoom_speed = if orbit.max_radius > 300.0 { 20.0 } else { 2.0 };
+                
+                orbit.target_radius -= scroll_y_delta * zoom_speed;
+                orbit.target_radius = orbit.target_radius.clamp(orbit.min_radius, orbit.max_radius);
+            }
+            
+            check_state_transitions(&orbit, view, state, &mut next_state);
+        }
+
+        interpolate_camera_movement(&mut orbit, delta);
+
+        if orbit.is_changed() {
+            update_camera_transform(&mut transform, &orbit);
+        }
+    }
+}
 
 pub fn spawn_orbital_camera(
     commands: &mut Commands, 
@@ -53,42 +92,6 @@ pub fn spawn_orbital_camera(
     ));
 }
 
-pub fn orbital_camera_system(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut scroll_evr: MessageReader<MouseWheel>,
-    time: Res<Time>,
-    current_state: Res<State<GameState>>,
-    mut next_state: ResMut<NextState<GameState>>,
-    mut query: Query<(&mut Transform, &mut OrbitalCamera, &CameraView)>, 
-) {
-    let delta = time.delta_secs();
-    let state = current_state.get();
-    let scroll_y_delta = get_scroll_delta(&mut scroll_evr);
-
-    for (mut transform, mut orbit, view) in &mut query {
-        
-        handle_rotation_input(&keyboard, &mut orbit, delta);
-
-        if is_camera_active(view, state) {
-            if scroll_y_delta != 0.0 {
-                
-                let zoom_speed = if orbit.max_radius > 300.0 { 20.0 } else { 2.0 };
-                
-                orbit.target_radius -= scroll_y_delta * zoom_speed;
-                orbit.target_radius = orbit.target_radius.clamp(orbit.min_radius, orbit.max_radius);
-            }
-            
-            check_state_transitions(&orbit, view, state, &mut next_state);
-        }
-
-        interpolate_camera_movement(&mut orbit, delta);
-
-        if orbit.is_changed() {
-            update_camera_transform(&mut transform, &orbit);
-        }
-    }
-}
-
 fn handle_rotation_input(keyboard: &Res<ButtonInput<KeyCode>>, orbit: &mut OrbitalCamera, delta: f32) {
     let rotation_speed = 2.0 * delta;
     let mut d_yaw = 0.0;
@@ -106,11 +109,6 @@ fn handle_rotation_input(keyboard: &Res<ButtonInput<KeyCode>>, orbit: &mut Orbit
     }
 }
 
-fn handle_zoom_input(scroll_y_delta: f32, orbit: &mut OrbitalCamera) {
-    orbit.target_radius -= scroll_y_delta * 1.5; 
-    orbit.target_radius = orbit.target_radius.clamp(3.5, 50.0);
-}
-
 fn check_state_transitions(
     orbit: &OrbitalCamera, 
     view: &CameraView,
@@ -124,28 +122,6 @@ fn check_state_transitions(
         next_state.set(GameState::GalaxyMap);
     }
 }
-fn interpolate_camera_movement(orbit: &mut OrbitalCamera, delta: f32) {
-    let distance_to_target = orbit.focus.distance(orbit.target_focus);
-    let radius_diff = (orbit.target_radius - orbit.radius).abs();
-
-    if distance_to_target > 0.001 || radius_diff > 0.001 {
-        let lerp_speed = 5.0 * delta;
-        orbit.focus = orbit.focus.lerp(orbit.target_focus, lerp_speed);
-        orbit.radius = orbit.radius + (orbit.target_radius - orbit.radius) * lerp_speed;
-    } else if distance_to_target > 0.0 || radius_diff > 0.0 {
-        orbit.focus = orbit.target_focus;
-        orbit.radius = orbit.target_radius;
-    }
-}
-
-fn update_camera_transform(transform: &mut Transform, orbit: &OrbitalCamera) {
-    let x = orbit.radius * orbit.yaw.sin() * orbit.pitch.cos();
-    let y = orbit.radius * orbit.pitch.sin();
-    let z = orbit.radius * orbit.yaw.cos() * orbit.pitch.cos();
-
-    transform.translation = orbit.focus + Vec3::new(x, y, z);
-    *transform = transform.looking_at(orbit.focus, Vec3::Y);
-}
 
 fn get_scroll_delta(scroll_evr: &mut MessageReader<MouseWheel>) -> f32 {
     let mut scroll_y_delta = 0.0;
@@ -155,10 +131,22 @@ fn get_scroll_delta(scroll_evr: &mut MessageReader<MouseWheel>) -> f32 {
     scroll_y_delta
 }
 
-fn is_camera_active(view: &CameraView, current_state: &GameState) -> bool {
-    match (view, current_state) {
-        (CameraView::Galaxy, GameState::GalaxyMap) => true,
-        (CameraView::StarSystem, GameState::StarSystem) => true,
-        _ => false,
+pub fn exit_star_system(
+    mut commands: Commands,
+    mut camera_query: Query<(Entity, &CameraView, &mut OrbitalCamera)>,
+    local_star_query: Query<Entity, With<LocalStarSystem>>,
+    mut universe_star_query: Query<&mut Visibility, With<UniverseStar>>,
+) {
+    for (entity, view, mut orbit) in &mut camera_query {
+        if *view == CameraView::StarSystem {
+            commands.entity(entity).despawn();
+        } else if *view == CameraView::Galaxy {
+
+            orbit.target_radius = orbit.min_radius + 20.0;
+            orbit.radius = orbit.target_radius;
+        }
     }
+    
+    for entity in &local_star_query { commands.entity(entity).despawn(); }
+    for mut visibility in &mut universe_star_query { *visibility = Visibility::Inherited; }
 }

@@ -1,3 +1,13 @@
+use bevy::{math::ops::powf, post_process::bloom::BloomPlugin, prelude::*, ui::AvailableSpace};
+use rand::rngs::StdRng;
+use rand::{RngExt, SeedableRng};
+use rand::distr::Alphanumeric;
+use crate::{GameRng, GameState, BelongsTo};
+use crate::universe_gen::components::{Universe, UniverseStar, StarColor, StarType, StarProperties};
+use crate::universe_gen::math::{get_chunk, draw_type};
+use crate::camera::components::{CameraFocusedOn, CameraView, OrbitalCamera};
+use crate::camera::systems::spawn_orbital_camera;//to fix
+
 pub fn spawn_universe(
     mut commands: Commands,
     mut focused_on: ResMut<CameraFocusedOn>,
@@ -99,8 +109,8 @@ fn spawn_star(
     galaxy_id: Entity
 ) {
     let (x, y, z) = position;
-	let kind = StarType::draw_type(rng);
-    let (color, temp_min, temp_max, scale_min, scale_max) = StarType::get_properties(&kind);
+	let kind = draw_type(rng);
+    let StarProperties{color, min_temp, max_temp, min_radius, max_radius} = kind.get_properties();
 
     let material_handle = match color {
         StarColor::Red => palette[0].clone(),
@@ -110,7 +120,7 @@ fn spawn_star(
         StarColor::Blue => palette[4].clone(),
     };
 
-	let scale = rng.random_range(scale_min..=scale_max);
+	let scale = rng.random_range(min_radius..=max_radius);
 
 	let hitbox_scale: f32 = match scale {
 		..0.4 => 10.0,
@@ -127,7 +137,7 @@ fn spawn_star(
             .take(8)
             .map(char::from)
             .collect(),
-            temperature: rng.random_range(temp_min..=temp_max),
+            temperature: rng.random_range(min_temp..=max_temp),
             scale,
             color,
 			kind,
