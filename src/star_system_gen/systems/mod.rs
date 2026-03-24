@@ -1,6 +1,7 @@
 mod star;
 mod planets;
-mod satelittes;
-mod systems;
+mod satellites;
+mod blueprints;
+mod pipeline;
 
-pub use systems::spawn_star_system;
+pub use pipeline::spawn_star_system;
